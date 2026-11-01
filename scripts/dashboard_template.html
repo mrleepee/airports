@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALC non-Schengen flights</title>
+<style>
+.viz-root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6; --series-2: #eb6834;
+  --warning: #fab219; --critical: #d03b3b; --on-warning: #0b0b0b;
+  --wash: rgba(11,11,11,0.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface-1: #1a1a19;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #d95926; --wash: rgba(255,255,255,0.05);
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface-1: #1a1a19;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5; --series-2: #d95926; --wash: rgba(255,255,255,0.05);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.viz-root { min-height: 100vh; background: var(--page); color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 24px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+header p { margin: 4px 0 0; color: var(--text-secondary); }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+.card h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+.card h2 small { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+.notice { border-left: 3px solid var(--warning); color: var(--text-secondary); }
+.notice b { color: var(--text-primary); }
+.filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; background: none; color: var(--text-secondary); border: 0; padding: 6px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--wash); color: var(--text-primary); font-weight: 600; }
+select { font: inherit; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+.theme { margin-left: auto; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
+.tile .k { color: var(--text-secondary); font-size: 13px; }
+.tile .v { font-size: 30px; font-weight: 600; margin-top: 2px; }
+.tile .s { color: var(--text-muted); font-size: 12px; }
+.charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .charts { grid-template-columns: 1fr; } }
+.legend { display: flex; gap: 16px; color: var(--text-secondary); font-size: 13px; margin: -4px 0 12px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+/* horizontal stacked bars */
+.hbar { display: grid; grid-template-columns: 130px 1fr; gap: 6px 10px; align-items: center; }
+.hbar .lab { color: var(--text-secondary); font-size: 13px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbar .track { display: flex; align-items: center; height: 18px; }
+.seg-a, .seg-d { height: 100%; }
+.seg-a { background: var(--series-1); } .seg-d { background: var(--series-2); }
+.track > .seg-a + .seg-d { margin-left: 2px; }
+.track > :last-of-type { border-radius: 0 4px 4px 0; }
+.track .tot { margin-left: 8px; color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* columns */
+.cols { position: relative; height: 220px; margin-left: 28px; border-bottom: 1px solid var(--axis); }
+.cols .gl { position: absolute; left: 0; right: 0; border-top: 1px solid var(--grid); }
+.cols .gl span { position: absolute; left: -28px; top: -8px; width: 22px; text-align: right; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cols .bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 6px; padding: 0 4px; }
+.cols .col { flex: 1; display: flex; flex-direction: column-reverse; height: 100%; justify-content: flex-start; }
+.cols .col > div { width: 100%; }
+.cols .col > .seg-a + .seg-d { margin-bottom: 2px; }
+.cols .col > :last-child { border-radius: 4px 4px 0 0; }
+.xlab { display: flex; gap: 6px; padding: 4px 4px 0; margin-left: 28px; }
+.xlab span { flex: 1; text-align: center; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+[data-tip] { cursor: default; }
+.tip { position: fixed; pointer-events: none; background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); display: none; z-index: 10; white-space: nowrap; }
+/* table */
+.tbl { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid var(--axis); padding: 6px 8px; white-space: nowrap; }
+td { border-bottom: 1px solid var(--grid); padding: 6px 8px; white-space: nowrap; }
+td.num, th.num { font-variant-numeric: tabular-nums; }
+tr:hover td { background: var(--wash); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.muted { color: var(--text-muted); }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.chip.warn { background: var(--warning); color: var(--on-warning); }
+.chip.crit { background: var(--critical); color: #fff; }
+footer { color: var(--text-muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+  <header>
+    <h1>Alicante (ALC) · non-Schengen flights</h1>
+    <p id="sub"></p>
+  </header>
+  <div class="card notice" id="notice"></div>
+  <div class="filters">
+    <div class="seg" id="f-type" role="group" aria-label="Direction">
+      <button data-v="all" aria-pressed="true">All</button><button data-v="arrival" aria-pressed="false">Arrivals</button><button data-v="departure" aria-pressed="false">Departures</button>
+    </div>
+    <select id="f-country" aria-label="Country"><option value="all">All countries</option></select>
+    <div class="seg theme" id="f-theme" role="group" aria-label="Theme">
+      <button data-v="auto" aria-pressed="true">Auto</button><button data-v="light" aria-pressed="false">Light</button><button data-v="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <div class="tiles" id="tiles"></div>
+  <div class="charts">
+    <div class="card"><h2>Flights by country</h2><div class="legend" id="lg1"></div><div class="hbar" id="by-country"></div></div>
+    <div class="card"><h2>Flights by scheduled hour <small>Europe/Madrid</small></h2><div class="legend" id="lg2"></div>
+      <div class="cols" id="by-hour"></div><div class="xlab" id="by-hour-x"></div></div>
+  </div>
+  <div class="card">
+    <h2>Flights <small id="count"></small></h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Sched</th><th>Est / actual</th><th>Delay</th><th>Flight</th><th>Airline</th><th>Dir</th><th>From / to</th><th>Country</th><th>Last status</th><th>Gate / belt</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </div>
+  <footer id="foot"></footer>
+</div>
+<div class="tip" id="tip"></div>
+</div>
+<script>
+const DATA = __DATA__;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const title = s => esc(s).toLowerCase().replace(/(^|[\s/(-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+const t = iso => iso.slice(11, 16);
+const state = { type: "all", country: "all" };
+const DIR = { arrival: "Arrivals", departure: "Departures" };
+const DELAY = 15;
+
+$("sub").textContent = `${DATA.date} · ${DATA.runs.length} collection runs, ${t(DATA.runs[0])}–${t(DATA.runs.at(-1))} CET` +
+  (DATA.failed_runs ? ` · ${DATA.failed_runs} failed` : "");
+const unk = Object.entries(DATA.unknown);
+$("notice").innerHTML = `<b>Partial day.</b> Aena's feed lists flights from about an hour before each run, so flights before ~${
+  String(Math.max(0, +t(DATA.runs[0]).slice(0,2) - 1)).padStart(2,"0")}:${t(DATA.runs[0]).slice(3)} are missing. ` +
+  `Non-Schengen means the other airport is outside the Schengen Area (UK, Ireland, North Africa, etc.).` +
+  (unk.length ? ` <b>${unk.length} airport(s) not classified and left out:</b> ${unk.map(([k, v]) => `${esc(k)} (${title(v)})`).join(", ")}.` : "");
+$("foot").textContent = `Source: aena.es flight feed via scripts/collect.py · status labels are inferred from Aena codes · last run ${DATA.runs.at(-1)}`;
+
+const countries = [...new Map(DATA.flights.map(f => [f.country, f.country_name]))].sort((a, b) => a[1].localeCompare(b[1]));
+$("f-country").innerHTML += countries.map(([c, n]) => `<option value="${c}">${esc(n)}</option>`).join("");
+const legend = types => types.map(k => `<span><i style="background:var(--series-${k === "arrival" ? 1 : 2})"></i>${DIR[k]}</span>`).join("");
+
+function seg(el, key, on) {
+  el.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    el.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    on(b.dataset.v);
+  });
+}
+seg($("f-type"), "type", v => { state.type = v; render(); });
+$("f-country").addEventListener("change", e => { state.country = e.target.value; render(); });
+seg($("f-theme"), "theme", v => v === "auto" ? delete document.documentElement.dataset.theme : document.documentElement.dataset.theme = v);
+
+const tip = $("tip");
+document.addEventListener("mousemove", e => {
+  const el = e.target.closest("[data-tip]");
+  if (!el) { tip.style.display = "none"; return; }
+  tip.innerHTML = el.dataset.tip; tip.style.display = "block";
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(e.clientX + 12, innerWidth - r.width - 8) + "px";
+  tip.style.top = (e.clientY + 14 + r.height > innerHeight ? e.clientY - r.height - 10 : e.clientY + 14) + "px";
+});
+
+const isDelayed = f => f.delay !== null && f.delay >= DELAY;
+const isCancelled = f => f.status === "CAN";
+function niceStep(max) { const raw = max / 4, p = 10 ** Math.floor(Math.log10(raw || 1));
+  return [1, 2, 5, 10].map(m => m * p).find(s => s >= raw); }
+
+function render() {
+  const F = DATA.flights.filter(f => (state.type === "all" || f.type === state.type) && (state.country === "all" || f.country === state.country));
+  const types = state.type === "all" ? ["arrival", "departure"] : [state.type];
+  const arr = F.filter(f => f.type === "arrival").length, dep = F.length - arr;
+  const del = F.filter(isDelayed), can = F.filter(isCancelled);
+  const share = DATA.total_all ? Math.round(100 * DATA.flights.length / DATA.total_all) : 0;
+  $("tiles").innerHTML = [
+    ["Non-Schengen flights", F.length, `${share}% of all ${DATA.total_all} ALC flights collected`],
+    ["Arrivals", arr, ""], ["Departures", dep, ""],
+    ["Countries", new Set(F.map(f => f.country)).size, ""],
+    [`Delayed ≥ ${DELAY} min`, del.length, del.length ? `max +${Math.max(...del.map(f => f.delay))} min` : "on estimate vs schedule"],
+    ["Cancelled", can.length, ""],
+  ].map(([k, v, s]) => `<div class="card tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+
+  // by country
+  $("lg1").innerHTML = legend(types); $("lg2").innerHTML = legend(types);
+  const byC = new Map();
+  F.forEach(f => { const r = byC.get(f.country) || { name: f.country_name, arrival: 0, departure: 0 }; r[f.type]++; byC.set(f.country, r); });
+  const cRows = [...byC.values()].sort((a, b) => (b.arrival + b.departure) - (a.arrival + a.departure) || a.name.localeCompare(b.name));
+  const cMax = Math.max(1, ...cRows.map(r => r.arrival + r.departure));
+  $("by-country").innerHTML = cRows.map(r => {
+    const segs = types.filter(k => r[k]).map(k => `<div class="seg-${k[0]}" style="width:calc(${100 * r[k] / cMax}% - 60px * ${r[k] / cMax})" data-tip="<b>${esc(r.name)}</b><br>${DIR[k]}: ${r[k]}"></div>`).join("");
+    return `<div class="lab" title="${esc(r.name)}">${esc(r.name)}</div><div class="track">${segs}<span class="tot">${r.arrival + r.departure}</span></div>`;
+  }).join("") || `<div></div><div class="muted">No flights match.</div>`;
+
+  // by hour
+  const hours = F.map(f => +f.scheduled.slice(0, 2));
+  const h0 = hours.length ? Math.min(...hours) : 0, h1 = hours.length ? Math.max(...hours) : 23;
+  const H = []; for (let h = h0; h <= h1; h++) H.push({ h, arrival: 0, departure: 0 });
+  F.forEach(f => H[+f.scheduled.slice(0, 2) - h0][f.type]++);
+  const hMaxRaw = Math.max(1, ...H.map(r => r.arrival + r.departure)), step = niceStep(hMaxRaw), hMax = Math.ceil(hMaxRaw / step) * step;
+  let grid = ""; for (let v = step; v <= hMax; v += step) grid += `<div class="gl" style="bottom:${100 * v / hMax}%"><span>${v}</span></div>`;
+  const hh = h => String(h).padStart(2, "0");
+  $("by-hour").innerHTML = grid + `<div class="bars">` + H.map(r => `<div class="col">` +
+    types.filter(k => r[k]).map(k => `<div class="seg-${k[0]}" style="height:${100 * r[k] / hMax}%" data-tip="<b>${hh(r.h)}:00–${hh(r.h)}:59</b><br>${DIR[k]}: ${r[k]}"></div>`).join("") +
+    `</div>`).join("") + `</div>`;
+  $("by-hour-x").innerHTML = H.map(r => `<span>${hh(r.h)}</span>`).join("");
+
+  // table
+  $("count").textContent = `${F.length} shown`;
+  $("rows").innerHTML = F.map(f => {
+    const delay = f.delay === null ? `<span class="muted">–</span>` : isDelayed(f) ? `<span class="chip warn">▲ +${f.delay} min</span>` :
+      f.delay > 0 ? `+${f.delay}` : f.delay < 0 ? `${f.delay}` : `<span class="muted">0</span>`;
+    const status = isCancelled(f) ? `<span class="chip crit">✕ Cancelled</span>` : f.status ? `${esc(f.label)} <span class="muted">${esc(f.status)}</span>` : `<span class="muted">No status yet</span>`;
+    const gb = f.type === "arrival" ? (f.belt && f.belt !== "null" ? `Belt ${esc(f.belt)}` : "") : (f.gate && f.gate !== "null" ? `Gate ${esc(f.gate)}` : "");
+    return `<tr><td class="num">${f.scheduled}</td><td class="num">${f.estimated || `<span class="muted">–</span>`}${f.next_day ? ` <span class="muted">+1</span>` : ""}</td>` +
+      `<td class="num">${delay}</td><td><b>${esc(f.flight)}</b></td><td>${esc(f.airline)}</td>` +
+      `<td><span class="dot" style="background:var(--series-${f.type === "arrival" ? 1 : 2})"></span>${f.type === "arrival" ? "Arr" : "Dep"}</td>` +
+      `<td>${title(f.city)} <span class="muted">${esc(f.airport)}</span></td><td>${esc(f.country_name)}</td><td title="Last observed ${t(f.updated)} CET">${status}</td><td>${gb || `<span class="muted">–</span>`}</td></tr>`;
+  }).join("") || `<tr><td colspan="10" class="muted">No flights match.</td></tr>`;
+}
+render();
+</script>
+</body>
+</html>
