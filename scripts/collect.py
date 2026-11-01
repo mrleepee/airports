@@ -74,4 +74,4 @@ def report(db, iso):
 Not confirmed complete unless stated by the reporter; see README for limitations.
 """
     open(os.path.join(ROOT, "reports", iso + ".md"), "w").write(md)
-main()
+if __name__ == "__main__": main()
