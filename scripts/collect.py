@@ -11,6 +11,13 @@ LABELS = {"": "No status yet", "SCH": "Scheduled", "FLY": "In flight", "LAN": "L
  "INI": "Check-in/boarding started (raw INI)", "IBK": "Baggage belt open (raw IBK)", "RET": "Delayed (raw RET)",
  "HOR": "Schedule changed (raw HOR)", "ULL": "Final call (raw ULL)", "EMB": "Boarding (raw EMB)",
  "CER": "Gate closed (raw CER)", "CAN": "Cancelled", "DIV": "Diverted", "DEP": "Departed"}
+# Arrivals: the feed's codes differ from departures (e.g. BOR/INI on an arrival is not "boarding"), so only
+# codes with an obvious reading get a label; everything else is shown as its raw code with meaning not confirmed.
+ARR_LABELS = {"": "No status yet", "SCH": "Scheduled", "FLY": "In flight", "LND": "Landed (raw LND)",
+ "IBK": "Baggage belt open (raw IBK)", "HOR": "Schedule changed (raw HOR)", "CAN": "Cancelled", "DIV": "Diverted"}
+def label(kind, code):
+    if kind == "arrival": return ARR_LABELS.get(code or "", "meaning not confirmed")
+    return LABELS.get(code or "", "unknown code")
 def fetch(t):
     r = urllib.request.Request(URL.format(t), headers={"User-Agent": "Mozilla/5.0"})
     return json.load(urllib.request.urlopen(r, timeout=90))
@@ -48,7 +55,7 @@ def report(db, iso):
         rows = sorted((f for f in F if f["type"] == kind), key=lambda f: f["scheduled"])
         o = [f"| Flight | Airline | {'Origin' if kind=='arrival' else 'Destination'} | Scheduled | Estimated/Actual | Status |", "|---|---|---|---|---|---|"]
         for f in rows:
-            o.append(f'| {f["flight"]} | {f["airline"]} | {f["other_city"]} ({f["other_airport"]}) | {f["scheduled"][:5]} | {(f["estimated"] or "")[:5]} | {f["status_code"] or "-"} ({LABELS.get(f["status_code"],"unknown code")}) |')
+            o.append(f'| {f["flight"]} | {f["airline"]} | {f["other_city"]} ({f["other_airport"]}) | {f["scheduled"][:5]} | {(f["estimated"] or "")[:5]} | {f["status_code"] or "-"} ({label(kind, f["status_code"])}) |')
         return rows, "\n".join(o)
     A, at = tab("arrival"); D, dt = tab("departure")
     delayed = [f for f in F if f["estimated"] and f["estimated"][:5] > f["scheduled"][:5] and
@@ -56,6 +63,7 @@ def report(db, iso):
     canc = [f for f in F if f["status_code"] in ("CAN",)]
     abn = [f for f in F if f["status_code"] in ("CAN", "DIV", "RET", "HOR")]
     last = db["runs"][-1]["at"]; fails = [r for r in db["runs"] if r["err"]]
+    final = datetime.datetime.now(TZ).hour >= 23
     md = f"""# ALC daily report {iso}
 ## Daily Summary
 - Date: {iso}
@@ -69,9 +77,13 @@ def report(db, iso):
 ## Departures
 {dt}
 ## Exceptions
-""" + ("\n".join(f'- {f["type"]} {f["flight"]} sched {f["scheduled"][:5]} est {(f["estimated"] or "")[:5]} status {f["status_code"]}' for f in {id(f): f for f in delayed+abn}.values()) or "- none") + """
+""" + ("\n".join(f'- {f["type"]} {f["flight"]} sched {f["scheduled"][:5]} est {(f["estimated"] or "")[:5]} status {f["status_code"]}' for f in {id(f): f for f in delayed+abn}.values()) or "- none") + f"""
 ## Data completeness
-Not confirmed complete unless stated by the reporter; see README for limitations.
+- Snapshot: {'FINAL end-of-day snapshot (23:00 run)' if final else 'INTERIM snapshot, not final'}; last collection {last}; collection runs today: {len(db['runs'])}.
+- Earliest scheduled times in the feed: arrivals {min((f['scheduled'] for f in A), default='-')[:5]}, departures {min((f['scheduled'] for f in D), default='-')[:5]}. Flights before the first run of the day ({db['runs'][0]['at']}) may be missing (see README).
+- Aena's feed gives an estimated time only; no separate actual-time field is provided.
+- Arrival status codes other than SCH, FLY, LND, IBK, HOR, CAN and DIV are shown raw; their meaning is not confirmed.
+- Not confirmed complete until the 23:00 end-of-day run has been reconciled.
 """
     open(os.path.join(ROOT, "reports", iso + ".md"), "w").write(md)
 main()
