@@ -21,7 +21,7 @@ def main():
     run = {"at": now.isoformat(timespec="seconds"), "ok": {}, "err": {}}
     for t, kind in (("L", "arrival"), ("S", "departure")):
         try:
-            rows = fetch(t); n = 0
+            rows = fetch(t); n = 0; batch = {}
             for x in rows:
                 if x["fecha"] != today: continue
                 n += 1
@@ -32,6 +32,17 @@ def main():
                   "status_code": x.get("estado"), "terminal": x.get("terminal"), "aircraft": x.get("tipoAeronave"),
                   "gate": x.get("puertaPrimera"), "belt": x.get("cintaPrimera"), "raw": {k: v for k, v in x.items() if not k.startswith("urlLogo")},
                   "source": URL.format(t), "collected_at": run["at"]}
+                # Aena can list the same flight twice in one response (one copy with a status, one blank).
+                # Keep the copy that carries a status as the record; keep every other raw copy in duplicate_raw.
+                if key in batch:
+                    prev = batch[key]
+                    if rec["status_code"] and not prev["status_code"]:
+                        rec["duplicate_raw"] = prev.get("duplicate_raw", []) + [prev["raw"]]
+                    else:
+                        prev.setdefault("duplicate_raw", []).append(rec["raw"])
+                        continue
+                batch[key] = rec
+            for key, rec in batch.items():
                 old = db["flights"].get(key)
                 rec["first_seen"] = old["first_seen"] if old else run["at"]
                 db["flights"][key] = rec
