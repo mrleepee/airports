@@ -51,8 +51,15 @@ def report(db, iso):
             o.append(f'| {f["flight"]} | {f["airline"]} | {f["other_city"]} ({f["other_airport"]}) | {f["scheduled"][:5]} | {(f["estimated"] or "")[:5]} | {f["status_code"] or "-"} ({LABELS.get(f["status_code"],"unknown code")}) |')
         return rows, "\n".join(o)
     A, at = tab("arrival"); D, dt = tab("departure")
-    delayed = [f for f in F if f["estimated"] and f["estimated"][:5] > f["scheduled"][:5] and
-               (int(f["estimated"][:2])*60+int(f["estimated"][3:5]) - int(f["scheduled"][:2])*60-int(f["scheduled"][3:5])) >= 15]
+    def delay_min(f):
+        # Minutes between scheduled and estimated, using estimated_date so a delay across midnight counts.
+        try:
+            sched = datetime.datetime.combine(datetime.date.fromisoformat(f["date"]), datetime.time.fromisoformat(f["scheduled"]))
+            est = datetime.datetime.combine(datetime.datetime.strptime(f["estimated_date"], "%d/%m/%Y").date(), datetime.time.fromisoformat(f["estimated"]))
+            return (est - sched).total_seconds() / 60
+        except (TypeError, ValueError):
+            return None
+    delayed = [f for f in F if (delay_min(f) or 0) >= 15]
     canc = [f for f in F if f["status_code"] in ("CAN",)]
     abn = [f for f in F if f["status_code"] in ("CAN", "DIV", "RET", "HOR")]
     last = db["runs"][-1]["at"]; fails = [r for r in db["runs"] if r["err"]]
@@ -73,5 +80,6 @@ def report(db, iso):
 ## Data completeness
 Not confirmed complete unless stated by the reporter; see README for limitations.
 """
+    os.makedirs(os.path.join(ROOT, "reports"), exist_ok=True)
     open(os.path.join(ROOT, "reports", iso + ".md"), "w").write(md)
 if __name__ == "__main__": main()

@@ -15,7 +15,7 @@ python3 scripts/dashboard.py          # non-Schengen HTML dashboard for the late
 python3 scripts/dashboard.py 2026-11-01
 ```
 
-Each run prints its run record (`{"at", "ok", "err"}`) as JSON. `--report` writes into `reports/`, which is not in the repo and is not created by the script: create it first or the run fails after the data has already been saved.
+Each run prints its run record (`{"at", "ok", "err"}`) as JSON. `--report` writes into `reports/` (gitignored); the script creates that directory if it is missing.
 
 Data updates are committed one per run (e.g. `Update ALC data 18:20`).
 
@@ -26,7 +26,7 @@ Data updates are committed one per run (e.g. `Update ALC data 18:20`).
 - **Merge key**: `type|numVuelo|compania|horaProgramada|iataOtro`. Each run overwrites the record for a key (latest observation wins) and keeps the original `first_seen`. Flights that drop out of the feed are never removed. If you change the key format, existing data files won't match up any more.
 - **Per-day file shape**: `{"date", "flights": {key: record}, "runs": [run, ...]}`. Each record has normalized fields plus `raw` (the full Aena row minus `urlLogo*`), `source`, and `collected_at`. A fetch failure for one direction goes into `run.err` and does not stop the other direction or the save. Output is written with `sort_keys=True, indent=1, ensure_ascii=False` to keep git diffs stable.
 - **Status codes**: always stored as raw `estado`. The `LABELS` map is a guess at Aena's Spanish codes and is used only for report display; don't treat the labels as authoritative.
-- **Report**: "delayed" means estimated ≥ 15 min after scheduled, computed from HH:MM only. It ignores `estimated_date`, so delays that cross midnight are missed. "Exceptions" are delayed flights plus `CAN`/`DIV`/`RET`/`HOR` statuses.
+- **Report**: "delayed" means estimated ≥ 15 min after scheduled, computed from the full scheduled and estimated datetimes (`estimated_date` included), so delays that cross midnight count. "Exceptions" are delayed flights plus `CAN`/`DIV`/`RET`/`HOR` statuses.
 
 ## Non-Schengen dashboard (`scripts/dashboard.py`)
 
