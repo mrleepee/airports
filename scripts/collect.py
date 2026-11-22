@@ -33,6 +33,9 @@ def main():
                   "gate": x.get("puertaPrimera"), "belt": x.get("cintaPrimera"), "raw": {k: v for k, v in x.items() if not k.startswith("urlLogo")},
                   "source": URL.format(t), "collected_at": run["at"]}
                 old = db["flights"].get(key)
+                # Aena can return a second, sparse row for the same flight (same times, empty estado, "null" terminal).
+                # It must not replace a stored observation that already carries a status.
+                if old and old["status_code"] and not rec["status_code"]: continue
                 rec["first_seen"] = old["first_seen"] if old else run["at"]
                 db["flights"][key] = rec
             run["ok"][kind] = n
